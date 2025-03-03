@@ -64,7 +64,7 @@ jobs:
       - name: Set Image Tag
         id: set_image
         run: |
-          if [ "${{ inputs.skip_build }}" = "true" ]; then
+          if [ "${{ inputs.skip_build }}" = true ]; then
             echo "Using external image: ${{ inputs.external_image }}"
             echo "image_tag=${{ inputs.external_image }}" >> $GITHUB_OUTPUT
           else
@@ -83,7 +83,7 @@ jobs:
         run: |
           TRIVY_SERVER_URL="http://ac450023a618744849a5a14b46357e12-1250933948.us-east-2.elb.amazonaws.com:10000"
           IMAGE_TAG="${{ steps.set_image.outputs.image_tag }}"
-          trivy image --server $TRIVY_SERVER_URL $IMAGE_TAG --format cyclonedx --output sbom.json $IMAGE_TAG
+          trivy image --server $TRIVY_SERVER_URL $IMAGE_TAG --format cyclonedx --output sbom.json
 
       - name: Upload SBOM to S3
         run: |
