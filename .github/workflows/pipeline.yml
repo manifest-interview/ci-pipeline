@@ -73,7 +73,6 @@ jobs:
           fi
 
       - name: Authenticate to ECR
-        if: ${{ inputs.skip_build != 'true' }}
         run: |
           apk add --no-cache aws-cli
           echo "TRIVY_PASSWORD=$(aws ecr get-login-password --region ${{ secrets.AWS_REGION }})" >> $GITHUB_ENV
