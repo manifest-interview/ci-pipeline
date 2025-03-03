@@ -5,9 +5,11 @@ on:
       skip_build:
         description: 'Skip building and pushing the image and use an external image'
         required: false
-        default: 'false'
+        type: boolean
+        default: false
       external_image:
         description: 'External image to scan when skip_build is true (e.g., myorg/myimage:tag)'
+        type: boolean
         required: false
     secrets:
       AWS_ACCESS_KEY_ID:
