@@ -1,0 +1,93 @@
+name: Build, Push, and Scan Docker Image
+on:
+  workflow_call:
+    inputs:
+      skip_build:
+        description: 'Skip building and pushing the image and use an external image'
+        required: false
+        default: 'false'
+      external_image:
+        description: 'External image to scan when skip_build is true (e.g., myorg/myimage:tag)'
+        required: false
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+      AWS_ACCOUNT_ID:
+        required: true
+      ECR_REPOSITORY_URI:
+        required: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        if: ${{ inputs.skip_build != 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        if: ${{ inputs.skip_build != 'true' }}
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        if: ${{ inputs.skip_build != 'true' }}
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Tag Docker Image
+        if: ${{ inputs.skip_build != 'true' }}
+        run: |
+          docker build -t ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }} .
+          docker tag ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }} ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+
+      - name: Push Docker Image to ECR
+        if: ${{ inputs.skip_build != 'true' }}
+        run: |
+          docker push ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+          docker push ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+
+  scan:
+    runs-on: ubuntu-latest
+    container:
+      image: aquasec/trivy:latest
+    needs: build-and-push
+    steps:
+      - name: Set Image Tag
+        id: set_image
+        run: |
+          if [ "${{ inputs.skip_build }}" = "true" ]; then
+            echo "Using external image: ${{ inputs.external_image }}"
+            echo "image_tag=${{ inputs.external_image }}" >> $GITHUB_OUTPUT
+          else
+            echo "Using built image: ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}"
+            echo "image_tag=${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Authenticate to ECR
+        if: ${{ inputs.skip_build != 'true' }}
+        run: |
+          apk add --no-cache aws-cli
+          echo "TRIVY_PASSWORD=$(aws ecr get-login-password --region ${{ secrets.AWS_REGION }})" >> $GITHUB_ENV
+          echo "TRIVY_USERNAME=AWS" >> $GITHUB_ENV
+
+      - name: Run Trivy Scan
+        run: |
+          TRIVY_SERVER_URL="http://ac450023a618744849a5a14b46357e12-1250933948.us-east-2.elb.amazonaws.com:10000"
+          IMAGE_TAG="${{ steps.set_image.outputs.image_tag }}"
+          trivy image --server $TRIVY_SERVER_URL $IMAGE_TAG --format cyclonedx --output sbom.json $IMAGE_TAG
+
+      - name: Upload SBOM to S3
+        run: |
+          apk add --no-cache aws-cli
+          if [ "${{ inputs.skip_build }}" = "true" ]; then
+            aws s3 cp sbom.json s3://manifest-sboms-211125417928/sbom-external-${{ github.sha }}.json
+          else
+            aws s3 cp sbom.json s3://manifest-sboms-211125417928/sbom-${{ github.sha }}.json
+          fi
