@@ -9,7 +9,7 @@ on:
         default: false
       external_image:
         description: 'External image to scan when skip_build is true (e.g., myorg/myimage:tag)'
-        type: boolean
+        type: string
         required: false
     secrets:
       AWS_ACCESS_KEY_ID:
